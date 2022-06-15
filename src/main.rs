@@ -1,41 +1,59 @@
 use std::{
     future::Future,
     pin::Pin,
+    sync::{
+        atomic::{AtomicBool, Ordering::SeqCst},
+        Arc,
+    },
     task::{Context, Poll},
     thread::{sleep, spawn},
     time::Duration,
 };
 
-use futures::executor::block_on;
+use futures::{executor::block_on, task::AtomicWaker};
 
-struct Task {
-    val: u32,
+struct TimerFuture {
+    shared_state: Arc<SharedState>,
 }
 
-impl Future for Task {
-    type Output = u32;
-    fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
-        dbg!("pool");
-        if self.val == 0 {
-            Poll::Pending
+/// Future和Thread共享的数据
+struct SharedState {
+    completed: AtomicBool,
+    waker: AtomicWaker,
+}
+
+impl Future for TimerFuture {
+    type Output = ();
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // 调用register更新Waker，再读取共享的completed变量.
+        self.shared_state.waker.register(cx.waker());
+        if self.shared_state.completed.load(SeqCst) {
+            Poll::Ready(())
         } else {
-            Poll::Ready(self.val)
+            Poll::Pending
         }
     }
 }
 
-async fn test() -> u32 {
-    let mut task = Task { val: 0 };
-    let f = task.await;
-    spawn(move || {
-        sleep(Duration::from_secs(1));
-        dbg!("sleeped");
-        task.val = 3;
-    });
-    f
+impl TimerFuture {
+    pub fn new(duration: Duration) -> Self {
+        let shared_state = Arc::new(SharedState {
+            completed: AtomicBool::new(false),
+            waker: AtomicWaker::new(),
+        });
+
+        let thread_shared_state = shared_state.clone();
+        spawn(move || {
+            sleep(duration);
+            thread_shared_state.completed.store(true, SeqCst);
+            thread_shared_state.waker.wake();
+        });
+
+        TimerFuture { shared_state }
+    }
 }
 
 fn main() {
-    dbg!(block_on(test()));
+    block_on(TimerFuture::new(Duration::from_secs(3)));
     println!("Hello, world!");
 }
