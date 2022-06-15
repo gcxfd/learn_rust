@@ -23,6 +23,18 @@ struct State {
     waker: AtomicWaker,
 }
 
+impl RecvFuture {
+    pub fn new() -> Self {
+        let state = Arc::new(State {
+            done: false,
+            waker: AtomicWaker::new(),
+            msg: None,
+        });
+
+        RecvFuture { state }
+    }
+}
+
 impl Future for RecvFuture {
     type Output = Msg;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -38,18 +50,6 @@ impl Future for RecvFuture {
     }
 }
 
-impl RecvFuture {
-    pub fn new() -> Self {
-        let state = Arc::new(State {
-            done: false,
-            waker: AtomicWaker::new(),
-            msg: None,
-        });
-
-        RecvFuture { state }
-    }
-}
-
 async fn recv() -> Option<Box<[u8]>> {
     let future = RecvFuture::new();
     let mut state = future.state.clone();
@@ -62,11 +62,18 @@ async fn recv() -> Option<Box<[u8]>> {
         }
         state.waker.wake();
     });
+    let state2 = future.state.clone();
+    spawn(move || {
+        sleep(Duration::from_secs(2));
+        dbg!("wake again");
+        state2.waker.wake();
+    });
     future.await
 }
 
 fn main() {
     println!("begin");
     dbg!(block_on(recv()));
+    sleep(Duration::from_secs(3));
     println!("end");
 }
