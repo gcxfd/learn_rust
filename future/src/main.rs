@@ -57,7 +57,6 @@ async fn recv() -> Option<Box<[u8]>> {
         sleep(Duration::from_secs(1));
         let mut state = unsafe { Arc::get_mut_unchecked(&mut state) };
         state.msg = Some(Box::new([1, 2, 3]));
-
         unsafe {
             std::ptr::write_volatile(&mut state.done as _, true);
         }
