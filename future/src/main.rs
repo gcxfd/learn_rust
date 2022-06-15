@@ -56,8 +56,12 @@ impl RecvFuture {
     }
 }
 
+async fn test() {
+    RecvFuture::new(Duration::from_secs(1)).await;
+}
+
 fn main() {
     println!("begin");
-    dbg!(block_on(RecvFuture::new(Duration::from_secs(1))));
+    dbg!(block_on(test()));
     println!("end");
 }
