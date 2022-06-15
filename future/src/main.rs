@@ -47,7 +47,7 @@ impl RecvFuture {
     }
 }
 
-async fn test() -> Option<Box<[u8]>> {
+async fn recv() -> Option<Box<[u8]>> {
     let future = RecvFuture::new();
     let mut state = future.state.clone();
     spawn(move || {
@@ -62,6 +62,6 @@ async fn test() -> Option<Box<[u8]>> {
 
 fn main() {
     println!("begin");
-    dbg!(block_on(test()));
+    dbg!(block_on(recv()));
     println!("end");
 }
