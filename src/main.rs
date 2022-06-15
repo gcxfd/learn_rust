@@ -1,3 +1,5 @@
+#![feature(get_mut_unchecked)]
+
 use std::{
     future::Future,
     pin::Pin,
@@ -12,7 +14,7 @@ use std::{
 
 use futures::{executor::block_on, task::AtomicWaker};
 
-struct TimerFuture {
+struct RecvFuture {
     state: Arc<State>,
 }
 
@@ -23,14 +25,14 @@ struct State {
     waker: AtomicWaker,
 }
 
-impl Future for TimerFuture {
+impl Future for RecvFuture {
     type Output = Option<Box<[u8]>>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         // 调用register更新Waker，再读取共享的completed变量.
         let state = &self.state;
         state.waker.register(cx.waker());
         if state.completed.load(SeqCst) {
-            let state = Arc::get_mut(&mut self.get_mut().state).unwrap();
+            let state = unsafe { Arc::get_mut_unchecked(&mut self.get_mut().state) };
             Poll::Ready(state.msg.take())
         } else {
             Poll::Pending
@@ -38,7 +40,7 @@ impl Future for TimerFuture {
     }
 }
 
-impl TimerFuture {
+impl RecvFuture {
     pub fn new(duration: Duration) -> Self {
         let state = Arc::new(State {
             completed: AtomicBool::new(false),
@@ -46,19 +48,20 @@ impl TimerFuture {
             msg: None,
         });
 
-        let thread_state = state.clone();
+        let mut thread_state = state.clone();
         spawn(move || {
             sleep(duration);
-            thread_state.msg = Some(Box::new([1, 2, 3]));
             thread_state.completed.store(true, SeqCst);
+            let mut thread_state = unsafe { Arc::get_mut_unchecked(&mut thread_state) };
+            thread_state.msg = Some(Box::new([1, 2, 3]));
             thread_state.waker.wake();
         });
 
-        TimerFuture { state }
+        RecvFuture { state }
     }
 }
 
 fn main() {
-    dbg!(block_on(TimerFuture::new(Duration::from_secs(3))));
+    dbg!(block_on(RecvFuture::new(Duration::from_secs(1))));
     println!("Hello, world!");
 }
