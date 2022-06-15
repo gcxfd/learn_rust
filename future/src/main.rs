@@ -26,7 +26,8 @@ impl Future for RecvFuture {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let state = &self.state;
         state.waker.register(cx.waker());
-        if state.done {
+        let done = unsafe { std::ptr::read_volatile(&state.done as *const bool) };
+        if done {
             let state = unsafe { Arc::get_mut_unchecked(&mut self.get_mut().state) };
             Poll::Ready(state.msg.take())
         } else {
@@ -53,8 +54,11 @@ async fn recv() -> Option<Box<[u8]>> {
     spawn(move || {
         sleep(Duration::from_secs(1));
         let mut state = unsafe { Arc::get_mut_unchecked(&mut state) };
-        state.done = true;
         state.msg = Some(Box::new([1, 2, 3]));
+
+        unsafe {
+            std::ptr::write_volatile(&mut state.done as *mut bool, true);
+        }
         state.waker.wake();
     });
     future.await
