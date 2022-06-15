@@ -36,20 +36,11 @@ impl Future for RecvFuture {
 }
 
 impl RecvFuture {
-    pub fn new(duration: Duration) -> Self {
+    pub fn new() -> Self {
         let state = Arc::new(State {
             done: false,
             waker: AtomicWaker::new(),
             msg: None,
-        });
-
-        let mut thread_state = state.clone();
-        spawn(move || {
-            sleep(duration);
-            let mut thread_state = unsafe { Arc::get_mut_unchecked(&mut thread_state) };
-            thread_state.done = true;
-            thread_state.msg = Some(Box::new([1, 2, 3]));
-            thread_state.waker.wake();
         });
 
         RecvFuture { state }
@@ -57,7 +48,16 @@ impl RecvFuture {
 }
 
 async fn test() {
-    RecvFuture::new(Duration::from_secs(1)).await;
+    let future = RecvFuture::new();
+    let mut state = future.state.clone();
+    spawn(move || {
+        sleep(Duration::from_secs(1));
+        let mut state = unsafe { Arc::get_mut_unchecked(&mut state) };
+        state.done = true;
+        state.msg = Some(Box::new([1, 2, 3]));
+        state.waker.wake();
+    });
+    future.await;
 }
 
 fn main() {
