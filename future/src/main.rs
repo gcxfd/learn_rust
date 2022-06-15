@@ -15,14 +15,16 @@ struct RecvFuture {
     state: Arc<State>,
 }
 
+type Msg = Option<Box<[u8]>>;
+
 struct State {
     done: bool,
-    msg: Option<Box<[u8]>>,
+    msg: Msg,
     waker: AtomicWaker,
 }
 
 impl Future for RecvFuture {
-    type Output = Option<Box<[u8]>>;
+    type Output = Msg;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let state = &self.state;
         state.waker.register(cx.waker());
