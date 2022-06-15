@@ -3,7 +3,7 @@
 use std::{
     future::Future,
     pin::Pin,
-    ptr,
+    ptr::{read_volatile, write_volatile},
     sync::Arc,
     task::{Context, Poll},
     thread::{sleep, spawn},
@@ -41,10 +41,10 @@ impl Future for RecvFuture {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let state = &self.state;
         state.waker.register(cx.waker());
-        let done = unsafe { ptr::read_volatile(&state.done as _) };
+        let done = unsafe { read_volatile(&state.done as _) };
         if done {
             //let state = unsafe { Arc::get_mut_unchecked(&mut self.get_mut().state) };
-            let msg = unsafe { ptr::read_volatile(&state.msg as *const Msg) };
+            let msg = unsafe { read_volatile(&state.msg as *const Msg) };
             Poll::Ready(msg)
         } else {
             Poll::Pending
@@ -60,8 +60,8 @@ async fn recv() -> Option<Box<[u8]>> {
         #[allow(unused_mut)]
         let mut state = unsafe { Arc::get_mut_unchecked(&mut state) };
         unsafe {
-            ptr::write_volatile(&mut state.msg as *mut Msg, Some(Box::new([1, 2, 3])));
-            ptr::write_volatile(&mut state.done as _, true);
+            write_volatile(&mut state.msg as *mut Msg, Some(Box::new([1, 2, 3])));
+            write_volatile(&mut state.done as _, true);
         }
         state.waker.wake();
     });
@@ -77,8 +77,10 @@ async fn recv() -> Option<Box<[u8]>> {
 }
 
 fn main() {
-    println!("begin");
-    dbg!(block_on(recv()));
-    sleep(Duration::from_secs(3));
-    println!("end");
+    loop {
+        println!("begin");
+        dbg!(block_on(recv()));
+        sleep(Duration::from_secs(3));
+        println!("end");
+    }
 }
