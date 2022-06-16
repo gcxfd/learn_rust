@@ -40,13 +40,13 @@ impl Future for RecvFuture {
     type Output = Msg;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let state = &self.state;
-        state.waker.register(cx.waker());
         let done = unsafe { read_volatile(&state.done as _) };
         if done {
-            //let state = unsafe { Arc::get_mut_unchecked(&mut self.get_mut().state) };
-            let msg = unsafe { read_volatile(&state.msg as *const Msg) };
-            Poll::Ready(msg)
+            let state = unsafe { Arc::get_mut_unchecked(&mut self.get_mut().state) };
+            //let mut msg = unsafe { read_volatile(&state.msg as *const Msg) }.take();
+            Poll::Ready(state.msg.take())
         } else {
+            state.waker.register(cx.waker());
             Poll::Pending
         }
     }
