@@ -2,6 +2,7 @@
 
 use std::{
     future::Future,
+    mem::ManuallyDrop,
     pin::Pin,
     ptr::{read_volatile, write_volatile},
     sync::Arc,
@@ -20,7 +21,7 @@ type Msg = Option<Box<[u8]>>;
 
 struct State {
     done: bool,
-    msg: Msg,
+    msg: ManuallyDrop<Msg>,
     waker: AtomicWaker,
 }
 
@@ -29,7 +30,7 @@ impl RecvFuture {
         let state = Arc::new(State {
             done: false,
             waker: AtomicWaker::new(),
-            msg: None,
+            msg: ManuallyDrop::new(None),
         });
 
         RecvFuture { state }
@@ -42,9 +43,8 @@ impl Future for RecvFuture {
         let state = &self.state;
         let done = unsafe { read_volatile(&state.done as _) };
         if done {
-            let state = unsafe { Arc::get_mut_unchecked(&mut self.get_mut().state) };
-            //let mut msg = unsafe { read_volatile(&state.msg as *const Msg) }.take();
-            Poll::Ready(state.msg.take())
+            let mut msg = unsafe { read_volatile(&state.msg as *const ManuallyDrop<Msg>) };
+            Poll::Ready(msg.take())
         } else {
             state.waker.register(cx.waker());
             Poll::Pending
@@ -60,7 +60,10 @@ async fn recv() -> Option<Box<[u8]>> {
         #[allow(unused_mut)]
         let mut state = unsafe { Arc::get_mut_unchecked(&mut state) };
         unsafe {
-            write_volatile(&mut state.msg as *mut Msg, Some(Box::new([1, 2, 3])));
+            write_volatile(
+                &mut state.msg as *mut ManuallyDrop<Msg>,
+                ManuallyDrop::new(Some(Box::new([1, 2, 3]))),
+            );
             write_volatile(&mut state.done as _, true);
         }
         state.waker.wake();
